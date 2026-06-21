@@ -84,7 +84,7 @@ The verification phase also enforces REQ-22's Redis wiring on every run (not jus
 ### 6.8 Error handling & logging
 - **REQ-19:** THE SYSTEM SHALL maintain a DEBUG_LOG.md-style log of every action and its outcome, per existing project convention.
 - **REQ-20:** THE SYSTEM SHALL use distinct exit codes per failure category (dependency, checksum, database, occ install, verification) rather than a single generic non-zero exit, so failures are scriptable and distinguishable.
-- **REQ-21:** THE SYSTEM SHALL provide a `--reset` flag that cleanly removes a partial/failed install (stop services, drop any DB this script created, remove web root, data directory, TLS certificates, and nginx configuration) so a retry starts clean. The database drop SHALL execute before services are stopped, since MariaDB must be running to execute `DROP DATABASE`.
+- **REQ-21:** THE SYSTEM SHALL provide a `--reset` flag that cleanly removes a partial/failed install (stop services, drop any DB this script created, remove web root, data directory, TLS certificates, and nginx configuration) so a retry starts clean. The database drop SHALL execute before services are stopped, since MariaDB must be running to execute `DROP DATABASE`. `--reset` is scoped to this installer's own Nextcloud install state (database, web root, TLS, nginx site config, data dir) — it does not remove or downgrade system dependencies (PHP, MariaDB, Redis, nginx itself) installed by REQ-3/4, since those may be relied on by other software on the host.
 
 ## 7. Out of Scope (v1)
 
