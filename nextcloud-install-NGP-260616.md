@@ -3,7 +3,7 @@
 **File:** nextcloud-install-NGP-260616.md
 **Author:** Yaw (NGP)
 **Date:** 2026-06-16 (updated 2026-06-20)
-**Status:** v2 — implementation complete. Proven on Ubuntu 24.04 / WSL2: core install (REQ-3, REQ-5 through REQ-12, REQ-14, REQ-16 through REQ-17, REQ-22 through REQ-25), idempotency re-run, DB-failure path (EXIT_DATABASE=40), and full reset-reinstall cycle. Not yet exercised by direct test: REQ-1 (unsupported-OS exit), REQ-2 (not-root exit), REQ-4 (PHP PPA fallback — distro PHP met the minimum on all test runs), REQ-13 (--apps / occ app:enable — no apps were passed in any test run), REQ-15 (Let's Encrypt real-domain flow — only self-signed was exercised).
+**Status:** v2 — implementation complete. Proven on Ubuntu 24.04 / WSL2: core install (REQ-3, REQ-5 through REQ-12, REQ-14, REQ-16 through REQ-17, REQ-22 through REQ-25), idempotency re-run, DB-failure path (EXIT_DATABASE=40), and full reset-reinstall cycle. Not yet exercised by direct test: REQ-1 (unsupported-OS exit), REQ-2 (not-root exit), REQ-13 (--apps / occ app:enable — no apps were passed in any test run), REQ-15 (Let's Encrypt real-domain flow — only self-signed was exercised). Proven by direct test (Ubuntu 22.04, 2025-06-26): REQ-4 (PHP PPA fallback — ondrej/php added, PHP 8.4 installed from scratch on clean 22.04 distro); REQ-24 (stale config.php recovery — _clear_partial_config() fired and cleared partial config from DB-fail run, maintenance:install proceeded cleanly).
 **Collaboration:** Wilson Mar — Nextcloud CLI installer (eventual commercial install package)
 
 ## 1. Purpose
