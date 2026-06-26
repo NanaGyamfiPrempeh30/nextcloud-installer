@@ -2,10 +2,12 @@
 """Nextcloud CLI installer — entrypoint."""
 
 import argparse
+import datetime
 import os
 import secrets
 import sys
 from pathlib import Path
+from typing import Optional
 
 from installer import db, deps, detect, download, log, occ, pkg, preflight, reset, tls, verify
 from installer.exitcodes import EXIT_OCC
@@ -166,6 +168,26 @@ def _print_admin_credentials(admin_user: str, admin_password: str) -> None:
 """)
 
 
+def _write_credentials_env(db_password: Optional[str], admin_user: str, admin_password: Optional[str]) -> None:
+    if db_password is None or admin_password is None:
+        return
+    env_path = Path("/root/.nextcloud-installer.env")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    content = (
+        "# Nextcloud installer credentials — chmod 600 — do not commit\n"
+        f"# Generated: {timestamp}\n"
+        f"NEXTCLOUD_DB_PASSWORD={db_password}\n"
+        f"NEXTCLOUD_ADMIN_USER={admin_user}\n"
+        f"NEXTCLOUD_ADMIN_PASSWORD={admin_password}\n"
+    )
+    try:
+        env_path.write_text(content)
+        env_path.chmod(0o600)
+        log.info("[INSTALL] Credentials written to /root/.nextcloud-installer.env (chmod 600).")
+    except OSError as e:
+        log.warning("[INSTALL] WARNING: could not write credentials file — credentials displayed above. " + str(e))
+
+
 def main() -> None:
     args = parse_args()
 
@@ -213,6 +235,7 @@ def main() -> None:
     # UNKNOWN     → occ errored (DB down, PHP error, etc.); abort rather than
     #               silently treating an error as "not installed" and overwriting
     #               an existing instance.
+    db_password = None
     install_state = occ.check_install_state(web_root)
     if install_state is occ.InstallState.INSTALLED:
         log.ok("[OCC] Nextcloud is already installed — skipping DB setup and occ install.")
@@ -222,7 +245,8 @@ def main() -> None:
                 "existing credentials in config.php remain authoritative."
             )
         admin_user = args.admin_user
-        admin_password = ""
+        admin_password = None
+        log.info("[INSTALL] Instance already installed — credentials in config.php are authoritative. Skipping .env write.")
         admin_pw_generated = False
     elif install_state is occ.InstallState.UNKNOWN:
         log.error(
@@ -265,6 +289,7 @@ def main() -> None:
 
     # Log run completion before the credential banner so the log record is clean.
     log.ok("[INSTALL] Run completed successfully.")
+    _write_credentials_env(db_password, admin_user, admin_password)
 
     # REQ-12: display the generated admin password once at the very end of the run.
     if admin_pw_generated:
