@@ -273,8 +273,10 @@ def main() -> None:
             admin_user=admin_user,
             admin_password=admin_password,
             data_dir=Path(args.data_dir),
-            apps=args.apps,
         )
+
+    # Step 7b: install or enable optional apps (REQ-13) — runs regardless of install state.
+    occ.enable_apps(web_root / "occ", args.apps)
 
     # Step 8: configure TLS and nginx — self-signed (REQ-14) or Let's Encrypt (REQ-15).
     tls.run_all(

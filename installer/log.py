@@ -29,16 +29,25 @@ def _write(level: str, msg: str) -> None:
 
 def info(msg: str) -> None:
     print(msg)
+    sys.stdout.flush()
     _write("INFO", msg)
 
 
 def ok(msg: str) -> None:
     print(msg)
+    sys.stdout.flush()
     _write("OK", msg)
 
 
+def warning(msg: str) -> None:
+    print(msg)
+    sys.stdout.flush()
+    _write("WARN", msg)
+
+
 def error(msg: str) -> None:
-    print(msg, file=sys.stderr)
+    print(msg)
+    sys.stdout.flush()
     _write("ERROR", msg)
 
 

@@ -160,21 +160,89 @@ def _configure_redis(occ_path: Path) -> None:
 
 
 def enable_apps(occ_path: Path, apps: list[str]) -> None:
-    """REQ-13: Enable optional apps via occ app:enable after core install."""
+    """REQ-13: Install or enable optional apps after core install.
+
+    Runs regardless of whether this is a fresh install or an idempotent re-run.
+    Routes each requested app through a three-state check against app:list JSON:
+      - already enabled  → skip
+      - disabled (on disk) → app:enable
+      - absent           → app:install (downloads from app store and enables)
+
+    Continues past individual failures; only exits EXIT_OCC if every requested
+    app failed.
+    """
     if not apps:
         return
-    log.info(f"[OCC] Enabling apps: {', '.join(apps)} ...")
+
     r = subprocess.run(
-        ["sudo", "-u", "www-data", "php", str(occ_path), "app:enable", *apps],
+        ["sudo", "-u", "www-data", "php", str(occ_path),
+         "app:list", "--output=json"],
         capture_output=True,
         text=True,
     )
     if r.returncode != 0:
-        log.error(f"[OCC] ERROR: app:enable failed:\n{r.stderr.strip()}")
-        if r.stdout.strip():
-            log.error(f"[OCC] stdout:\n{r.stdout.strip()}")
+        log.error(f"[APPS] ERROR: app:list failed — cannot route apps:\n{r.stderr.strip()}")
         sys.exit(EXIT_OCC)
-    log.ok(f"[OCC] Apps enabled: {', '.join(apps)}")
+
+    try:
+        app_data = json.loads(r.stdout)
+    except json.JSONDecodeError as e:
+        log.error(f"[APPS] ERROR: app:list output is not valid JSON: {e}")
+        sys.exit(EXIT_OCC)
+
+    enabled_set  = set(app_data.get("enabled",  {}).keys())
+    disabled_set = set(app_data.get("disabled", {}).keys())
+
+    count_already  = 0
+    count_enabled  = 0
+    count_installed = 0
+    count_failed   = 0
+
+    for app_id in apps:
+        if app_id in enabled_set:
+            log.info(f"[APPS] {app_id} already enabled — skipping.")
+            count_already += 1
+
+        elif app_id in disabled_set:
+            log.info(f"[APPS] {app_id} is on disk but disabled — enabling ...")
+            r = subprocess.run(
+                ["sudo", "-u", "www-data", "php", str(occ_path), "app:enable", app_id],
+                capture_output=True,
+                text=True,
+            )
+            if r.returncode != 0:
+                log.error(f"[APPS] ERROR: could not enable {app_id}:\n{r.stderr.strip()}")
+                if r.stdout.strip():
+                    log.error(f"[APPS] stdout:\n{r.stdout.strip()}")
+                count_failed += 1
+            else:
+                log.ok(f"[APPS] {app_id} enabled.")
+                count_enabled += 1
+
+        else:
+            log.info(f"[APPS] {app_id} not on disk — installing from app store ...")
+            r = subprocess.run(
+                ["sudo", "-u", "www-data", "php", str(occ_path), "app:install", app_id],
+                capture_output=True,
+                text=True,
+            )
+            if r.returncode != 0:
+                log.error(f"[APPS] ERROR: could not install {app_id}:\n{r.stderr.strip()}")
+                if r.stdout.strip():
+                    log.error(f"[APPS] stdout:\n{r.stdout.strip()}")
+                count_failed += 1
+            else:
+                log.ok(f"[APPS] {app_id} installed and enabled.")
+                count_installed += 1
+
+    log.info(
+        f"[APPS] Done — {count_already} already enabled, {count_enabled} enabled, "
+        f"{count_installed} installed, {count_failed} failed."
+    )
+
+    if count_failed == len(apps):
+        log.error("[APPS] ERROR: every requested app failed — aborting.")
+        sys.exit(EXIT_OCC)
 
 
 def _clear_partial_config(web_root: Path) -> None:
@@ -216,30 +284,15 @@ def run_all(
     admin_user: str,
     admin_password: str,
     data_dir: Path,
-    apps: list[str] = (),
 ) -> None:
-    """REQ-10 guard + REQ-11 install + REQ-13 app enable.
+    """REQ-11: Run maintenance:install on a confirmed NOT_INSTALLED instance.
 
-    Skips the entire occ phase if Nextcloud is already installed — this is what
-    makes the second-run acceptance criterion (spec Section 9 item 2) pass.
-    enable_apps() is only called after a fresh install, not on the skip path.
+    The caller (install.py) has already verified install state and routed here
+    only on the NOT_INSTALLED path.  This function runs maintenance:install,
+    re-asserts www-data ownership, and wires Redis (REQ-22).  App installation
+    (REQ-13) is handled separately by enable_apps(), called unconditionally after
+    this function so that --apps works on both fresh installs and idempotent re-runs.
     """
-    log.info(f"[OCC] Checking install status at {web_root} ...")
-
-    state = check_install_state(web_root)
-    if state is InstallState.INSTALLED:
-        log.ok("[OCC] Nextcloud is already installed — skipping maintenance:install.")
-        return
-    if state is InstallState.UNKNOWN:
-        log.error(
-            "[OCC] ERROR: 'occ status' failed or returned unparseable output.  "
-            "The database may be unreachable, PHP may have errored, or the web "
-            "root may be corrupt.  Cannot safely determine install state — aborting.  "
-            "Run with --reset to tear down and retry from scratch."
-        )
-        sys.exit(EXIT_OCC)
-    # state is NOT_INSTALLED — fall through to maintenance:install.
-
     # A previous failed maintenance:install run may have written a partial config.php
     # that contains the old DB password.  If occ loads it before applying --database-pass
     # from the CLI, the initial DB connection uses the stale password and fails with
@@ -275,5 +328,3 @@ def run_all(
 
     # REQ-22: wire Redis for local cache and distributed file locking.
     _configure_redis(occ_path)
-
-    enable_apps(occ_path, list(apps))
