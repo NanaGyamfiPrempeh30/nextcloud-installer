@@ -245,6 +245,52 @@ def enable_apps(occ_path: Path, apps: list[str]) -> None:
         sys.exit(EXIT_OCC)
 
 
+def configure_onlyoffice(occ_path: Path, url: str) -> None:
+    """REQ-26: Install the ONLYOFFICE connector app, set DocumentServerUrl, and check connectivity.
+
+    The connectivity check is non-fatal — a Document Server that is not yet reachable at
+    install time should not abort an otherwise successful Nextcloud install.  The URL is
+    configured regardless; the operator can verify manually once the server is available.
+    """
+    log.info("[ONLYOFFICE] Configuring ONLYOFFICE Document Server integration ...")
+
+    # Step a: install or enable the connector app via the same three-state routing as REQ-13.
+    enable_apps(occ_path, ["onlyoffice"])
+
+    # Step b: set the Document Server URL — fatal if this fails.
+    log.info(f"[ONLYOFFICE] Setting DocumentServerUrl to {url} ...")
+    r = subprocess.run(
+        ["sudo", "-u", "www-data", "php", str(occ_path),
+         "config:app:set", "onlyoffice", "DocumentServerUrl", f"--value={url}"],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0:
+        log.error(f"[ONLYOFFICE] ERROR: could not set DocumentServerUrl:\n{r.stderr.strip()}")
+        if r.stdout.strip():
+            log.error(f"[ONLYOFFICE] stdout:\n{r.stdout.strip()}")
+        sys.exit(EXIT_OCC)
+    log.ok("[ONLYOFFICE] DocumentServerUrl set.")
+
+    # Step c: connectivity check — non-fatal.
+    log.info("[ONLYOFFICE] Checking Document Server connectivity ...")
+    r = subprocess.run(
+        ["sudo", "-u", "www-data", "php", str(occ_path),
+         "onlyoffice:documentserver", "--check"],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode == 0:
+        log.ok("[ONLYOFFICE] Document Server connection verified.")
+    else:
+        log.warning(f"[ONLYOFFICE] Document Server not reachable — stdout: {r.stdout.strip()}")
+        log.warning(f"[ONLYOFFICE] Document Server not reachable — stderr: {r.stderr.strip()}")
+        log.warning(
+            "[ONLYOFFICE] URL is configured; verify manually once the server is available: "
+            "occ onlyoffice:documentserver --check"
+        )
+
+
 def _clear_partial_config(web_root: Path) -> None:
     """Remove config/config.php left by a previous failed maintenance:install run.
 

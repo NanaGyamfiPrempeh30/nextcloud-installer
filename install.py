@@ -105,6 +105,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--onlyoffice-url",
+        metavar="URL",
+        default=None,
+        help=(
+            "ONLYOFFICE Document Server URL to configure (e.g. https://onlyoffice.example.com). "
+            "Installs the connector app if not present, sets DocumentServerUrl, and runs a "
+            "connectivity check (REQ-26). Check failure is a warning only — install continues."
+        ),
+    )
+    parser.add_argument(
         "--reset",
         action="store_true",
         default=False,
@@ -277,6 +287,10 @@ def main() -> None:
 
     # Step 7b: install or enable optional apps (REQ-13) — runs regardless of install state.
     occ.enable_apps(web_root / "occ", args.apps)
+
+    # Step 7c: ONLYOFFICE Document Server integration (REQ-26) — optional, non-fatal check.
+    if args.onlyoffice_url:
+        occ.configure_onlyoffice(web_root / "occ", args.onlyoffice_url)
 
     # Step 8: configure TLS and nginx — self-signed (REQ-14) or Let's Encrypt (REQ-15).
     tls.run_all(
